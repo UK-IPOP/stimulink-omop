@@ -1,0 +1,30 @@
+.mypy_cache/
+/.coverage
+/.coverage.*
+/.nox/
+/.python-version
+/.pytype/
+/dist/
+/docs/_build/
+/src/*.egg-info/
+__pycache__/
+.vscode
+/.pytest_cache
+site
+
+# Added by cargo
+
+/target
+Cargo.lock
+
+# generally ignore data
+data/*
+
+# specific allows
+!data/fpaths/
+!data/sem_type_tree.tsv
+!data/state_fips_lookup.txt
+data_modeling/working_nb.ipynb
+data/*.html
+data/*.md
+data_modeling/*.csv
