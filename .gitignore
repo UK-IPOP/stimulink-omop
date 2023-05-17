@@ -28,3 +28,5 @@ data_modeling/working_nb.ipynb
 data/*.html
 data/*.md
 data_modeling/*.csv
+
+*.ipynb
