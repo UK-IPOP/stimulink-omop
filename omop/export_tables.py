@@ -1,23 +1,18 @@
-import shutil
 import polars as pl
 from rich.console import Console
 
 from pathlib import Path
 
-from omop.combine_cohorts import combined as combined_cohorts
-from omop.combine_diagnoses import combined as combined_diagnoses
-from omop.combine_encounters import combined as combined_encounters
-from omop.combine_procedures import combined as combined_procedures
-from omop.combine_labs import combined as combined_labs
-from omop.combine_emars import combined as combined_emars
-from omop.combine_rx import combined as combined_rx
+from combine_cohorts import combined as combined_cohorts
+from combine_diagnoses import combined as combined_diagnoses
+from combine_encounters import combined as combined_encounters
+from combine_procedures import combined as combined_procedures
+from combine_labs import combined as combined_labs
+from combine_emars import combined as combined_emars
+from combine_rx import combined as combined_rx
 
-from omop.combine_rx import combined as combined_rx
-from omop.combine_emars import combined as combined_emars
-
-# skip notes and do manually
-# from data_modeling.combine_notes import combined as combined_notes
-
+from combine_rx import combined as combined_rx
+from combine_emars import combined as combined_emars
 
 pl.Config.set_fmt_str_lengths(80)
 
@@ -29,11 +24,11 @@ console = Console(
     emoji=True,
 )
 
-DEST_DIR = Path().cwd() / "data" / "source_tables"
+DEST_DIR = Path().cwd().parent / "data" / "source_tables"
 
 # notes first since manual
 (
-    pl.scan_ipc(Path().cwd() / "data" / "notes.feather")
+    pl.scan_ipc(Path().cwd().parent / "data" / "notes.feather")
     .collect()
     .to_pandas()
     .to_csv(DEST_DIR / "combined_notes.csv", index=False)

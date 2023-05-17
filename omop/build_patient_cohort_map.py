@@ -45,7 +45,7 @@ opioid_regex = r"F11|^T40.[012346]"
 # if they have opioid diagnoses, then they are in the opioid cohort
 # if they have both, then they are in the both cohort
 def run() -> list[dict[str, str]]:
-    from omop.combine_diagnoses import combined as df
+    from combine_diagnoses import combined as df
 
     cleaned = (
         df.select(

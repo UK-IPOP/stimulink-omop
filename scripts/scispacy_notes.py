@@ -46,26 +46,10 @@ nltk.download("punkt")
 
 c = Console()
 
-# SNOMED_LINKER_PATHS = LinkerPaths(
-#     ann_index="./data/models/nmslib_index.bin",
-#     tfidf_vectorizer="./data/models/tfidf_vectorizer.joblib",
-#     tfidf_vectors="./data/models/tfidf_vectors_sparse.npz",
-#     concept_aliases_list="./data/models/concept_aliases.json",
-# )
-
-
-# class SnomedKnowledgeBase(KnowledgeBase):
-#     def __init__(
-#         self,
-#         file_path: str = "./data/knowledge_bases/snomed.jsonl",
-#     ):
-#         super().__init__(file_path)
-
-
-# # Admittedly this is a bit of a hack, because we are mutating a global object.
-# # However, it's just a kind of registry, so maybe it's ok.
-# DEFAULT_PATHS["snomed"] = SNOMED_LINKER_PATHS
-# DEFAULT_KNOWLEDGE_BASES["snomed"] = SnomedKnowledgeBase
+# TODO: add negation
+# https://github.com/jenojp/negspacy
+# TODO: use spacy batching
+# TODO: research spacy speed improvements with nlp.pipe
 
 
 print("Initializing Scispacy...")
@@ -180,8 +164,8 @@ def run(fpath: str) -> None:
     sentence_data = []
     # for id_, text in tqdm(rows):
     #     sentence_data.append((id_, text))
-        # for sent in sent_tokenize(text):
-        #     sentence_data.append((id_, sent))
+    # for sent in sent_tokenize(text):
+    #     sentence_data.append((id_, sent))
 
     chunk_size = 100_000
     sentence_chunks = list(zip_longest(*[iter(rows)] * chunk_size))

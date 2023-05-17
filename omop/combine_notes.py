@@ -1,8 +1,9 @@
+from pathlib import Path
 import polars as pl
 import pandas as pd
 from rich.console import Console
 
-from pathlib import Path
+from paths import ID_SOURCE_DIR
 
 pl.Config.set_fmt_str_lengths(80)
 
@@ -13,22 +14,6 @@ console = Console(
     markup=True,
     emoji=True,
 )
-
-UKHC_SOURCE1 = (
-    Path().home()
-    / "068IPOP_STIMuLINK-DataAnalytics"
-    / "UKHC_3948_REV1-Harris"
-    / "stimulant_population_identified"
-)
-UKHC_SOURCE2 = (
-    Path().home()
-    / "068IPOP_STIMuLINK-DataAnalytics"
-    / "UKHC_3948_REV1-Harris"
-    / "opioid_population_identified"
-)
-
-EPIC_SOURCE = Path().home() / "068IPOP_STIMuLINK-DataAnalytics" / "UKHC_4691-Harris"
-EPIC_SOURCE2 = Path().home() / "068IPOP_STIMuLINK-DataAnalytics" / "UKHC_5539-Harris"
 
 
 def select_aehr_note_text(row: dict[str, str]) -> str | None:
@@ -68,10 +53,10 @@ def select_aehr_note_text(row: dict[str, str]) -> str | None:
 
 
 aehr1 = pl.from_pandas(
-    pd.read_csv(UKHC_SOURCE1 / "EX4468_COHORT1_AEHR_NOTES.csv", low_memory=False)
+    pd.read_csv(ID_SOURCE_DIR / "EX5765_COHORT1_AEHR_NOTES.csv", low_memory=False)
 ).lazy()
 aehr2 = pl.from_pandas(
-    pd.read_csv(UKHC_SOURCE2 / "EX4468_COHORT2_AEHR_NOTES.csv", low_memory=False)
+    pd.read_csv(ID_SOURCE_DIR / "EX5765_COHORT2_AEHR_NOTES.csv", low_memory=False)
 ).lazy()
 
 aehr = pl.concat([aehr1, aehr2], how="vertical")
@@ -128,10 +113,10 @@ aehr = aehr.select(
 # ### SCM Section
 
 scm1 = pl.from_pandas(
-    pd.read_csv(UKHC_SOURCE1 / "EX4468_COHORT1_SCM_NOTES.csv", low_memory=False)
+    pd.read_csv(ID_SOURCE_DIR / "EX5765_COHORT1_SCM_NOTES.csv", low_memory=False)
 ).lazy()
 scm2 = pl.from_pandas(
-    pd.read_csv(UKHC_SOURCE2 / "EX4468_COHORT2_SCM_NOTES.csv", low_memory=False)
+    pd.read_csv(ID_SOURCE_DIR / "EX5765_COHORT2_SCM_NOTES.csv", low_memory=False)
 ).lazy()
 
 scm = pl.concat([scm1, scm2], how="vertical")
@@ -159,13 +144,11 @@ scm = scm.select(pl.all().exclude(["COHORT"]))
 
 # ### EPIC Section
 
-epic1 = pl.from_pandas(pd.read_csv(EPIC_SOURCE / "EX4691_COHORT1_NOTES_LDS.csv")).lazy()
-epic2 = pl.from_pandas(pd.read_csv(EPIC_SOURCE / "EX4691_COHORT2_NOTES_LDS.csv")).lazy()
-epic3 = pl.from_pandas(
-    pd.read_csv(EPIC_SOURCE2 / "EX5539_COHORT1_NOTES_LDS.csv")
+epic1 = pl.from_pandas(
+    pd.read_csv(ID_SOURCE_DIR / "EX5765_COHORT1_EPIC_NOTES_LDS.csv")
 ).lazy()
-epic4 = pl.from_pandas(
-    pd.read_csv(EPIC_SOURCE2 / "EX5539_COHORT2_NOTES_LDS.csv")
+epic2 = pl.from_pandas(
+    pd.read_csv(ID_SOURCE_DIR / "EX5765_COHORT2_EPIC_NOTES_LDS.csv")
 ).lazy()
 
 epic = pl.concat([epic1, epic2], how="vertical")
@@ -235,11 +218,11 @@ combined = (
     )
     .with_row_count(name="note_id", offset=1)
 )
-# print(combined.fetch().head(2))
+print(combined.fetch().head(2))
 
 # ? for some reason parquet broke on reading, but feather works fine
 # dump notes to feather temp file for easier querying later.
-# takes ~1-2 minutes and results in ~32 GB file
+# takes ~1-2 minutes and results in ~5 GB file
 # uncompressed
 collected = combined.collect()
-collected.write_ipc(Path().cwd() / "data" / "notes.feather", compression="zstd")
+collected.write_ipc(Path().cwd().parent / "data" / "notes.feather", compression="zstd")

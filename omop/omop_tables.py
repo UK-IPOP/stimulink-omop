@@ -1,9 +1,12 @@
+import itertools
 import json
 import pandas as pd
 import polars as pl
 from rich.console import Console
 
 from pathlib import Path
+
+from tqdm import tqdm
 
 
 pl.Config.set_fmt_str_lengths(80)
@@ -21,8 +24,8 @@ console = Console(
     emoji=True,
 )
 
-KNOWLEDGE_DIR = Path().cwd() / "data" / "knowledge_bases"
-DEST_DIR = Path().cwd() / "data" / "omop_tables"
+KNOWLEDGE_DIR = Path().cwd().parent / "data" / "knowledge_bases"
+DEST_DIR = Path().cwd().parent / "data" / "omop_tables"
 
 
 def unique_pts(df: pl.LazyFrame) -> pl.LazyFrame:
@@ -41,7 +44,7 @@ def unique_pts(df: pl.LazyFrame) -> pl.LazyFrame:
 
     dupes = (
         dff.filter(pl.col("PATIENT_NUM").is_in(list(dupe_set)))
-        .filter(pl.col("SOURCE").eq("EPIC"))
+        .filter(pl.col("DATA_SOURCE").eq("EPIC"))
         .sort("PATIENT_NUM")
         .groupby("PATIENT_NUM", maintain_order=True)
         # just take first row
@@ -50,6 +53,8 @@ def unique_pts(df: pl.LazyFrame) -> pl.LazyFrame:
     assert dupes.collect().shape[0] == len(dupe_set)
     original = dff.filter(~pl.col("PATIENT_NUM").is_in(list(dupe_set)))
     assert original.collect().shape[0] == len(ids) - len(dupe_set)
+    original = original.select(sorted(original.columns))
+    dupes = dupes.select(sorted(dupes.columns))
     combined = pl.concat([original, dupes], how="vertical")
     total_pts = combined.collect().shape[0]
     assert total_pts == len(ids)
@@ -57,7 +62,7 @@ def unique_pts(df: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def make_patient_id_lookup() -> dict[int, str]:
-    from omop.combine_cohorts import combined as df
+    from combine_cohorts import combined as df
 
     return {
         row[1]: row[0]
@@ -73,19 +78,19 @@ def make_patient_id_lookup() -> dict[int, str]:
 
 patient_num_to_id = make_patient_id_lookup()
 assert (
-    len(patient_num_to_id) == 26_900
-), f"Should be 26,900 patients, got {len(patient_num_to_id)}"
+    len(patient_num_to_id) == 26918
+), f"Should be 26,918 patients, got {len(patient_num_to_id)}"
 print(f"patient_num_to_id: {len(patient_num_to_id)}")
 
 
 def load_patient_map() -> dict[str, dict[str, tuple[str, int]]]:
-    with open(Path().cwd() / "data" / "patient_demographics.json", "r") as f:
+    with open(Path().cwd().parent / "data" / "patient_demographics.json", "r") as f:
         return json.load(f)
 
 
 def make_location_lookup() -> dict[str, int]:
     # same steps as in `omop_locations` so the ids should be the same
-    from omop.combine_cohorts import combined
+    from combine_cohorts import combined
 
     df = unique_pts(combined)
     return {
@@ -102,7 +107,7 @@ location_lookup = make_location_lookup()
 
 
 def omop_persons():
-    from omop.combine_cohorts import combined
+    from combine_cohorts import combined
 
     df = unique_pts(combined)
     # here we want to just read the patient map from file
@@ -159,7 +164,7 @@ def omop_persons():
 
 
 def omop_locations():
-    from omop.combine_cohorts import combined
+    from combine_cohorts import combined
 
     df = unique_pts(combined)
     address_cols = ["ADDR_LN_1", "ADDR_LN_2", "ADDR_CITY", "ADDR_ST_CD", "ZIP_CD_4"]
@@ -209,7 +214,7 @@ def omop_locations():
 
 
 def omop_deaths():
-    from omop.combine_encounters import combined as df
+    from combine_encounters import combined as df
 
     omop = (
         df.select(
@@ -250,7 +255,7 @@ def omop_deaths():
 
 
 def make_encounter_lookup():
-    from omop.combine_encounters import combined as df
+    from combine_encounters import combined as df
 
     return {
         row[1]: row[0]
@@ -265,7 +270,7 @@ visit_num_to_id = make_encounter_lookup()
 
 
 def make_encounter_date_lookup():
-    from omop.combine_encounters import combined as df
+    from combine_encounters import combined as df
 
     return {
         row["VISIT_NUM"]: row["ADMT_DT"]
@@ -277,7 +282,7 @@ encounter_date_lookup = make_encounter_date_lookup()
 
 
 def omop_encounters():
-    from omop.combine_encounters import combined
+    from combine_encounters import combined
 
     # drop bc causes dupes
     df = combined.drop("COHORT")
@@ -366,7 +371,7 @@ def fetch_icd10_codes():
 
 
 def omop_diagnoses():
-    from omop.combine_diagnoses import combined as df
+    from combine_diagnoses import combined as df
 
     # this is going to be some lookup from icd10 to either snomed or omop
     icd_lookup = fetch_icd10_codes()
@@ -413,7 +418,7 @@ def omop_diagnoses():
 
 
 def omop_procedures():
-    from omop.combine_procedures import combined as df
+    from combine_procedures import combined as df
 
     console.log("Loading CPT4 codes...")
     cpt4_lookup: dict[str, int] = {
@@ -491,7 +496,7 @@ def omop_procedures():
 
 
 def omop_labs():
-    from omop.combine_labs import combined as df
+    from combine_labs import combined as df
 
     # going to need to import concepts
     console.log("Loading LOINC codes...")
@@ -610,7 +615,7 @@ def map_routes(x: str) -> int | None:
 
 # use this in omop MEDS
 def omop_emars() -> pl.LazyFrame:
-    from omop.combine_emars import combined as emars
+    from combine_emars import combined as emars
 
     drug_name_lookup: dict[str, int] = {
         row[1]: row[0]
@@ -669,12 +674,12 @@ def omop_emars() -> pl.LazyFrame:
                 pl.lit("MED_ORDER_NAME").alias("drug_source_value"),
                 pl.col("ORDER_ROUTE_CODE").alias("route_source_value"),
                 pl.col("DOSEUNIT").alias("dose_unit_source_value"),
+                pl.col("PRIMARY_NDC").alias("drug_source_concept_id"),
                 #
                 # null
                 pl.lit("").alias("provider_id"),
                 pl.lit("").alias("lot_number"),
                 pl.lit("").alias("visit_detail_id"),
-                pl.lit("").alias("drug_source_concept_id"),
             ]
         )
         .drop(old_emar_cols)
@@ -685,7 +690,7 @@ def omop_emars() -> pl.LazyFrame:
 
 # use this in omop MEDS
 def omop_rx() -> pl.LazyFrame:
-    from omop.combine_rx import combined as rx
+    from combine_rx import combined as rx
 
     ndc_lookup: dict[str, int] = {
         row[1]: row[0]
@@ -740,13 +745,13 @@ def omop_rx() -> pl.LazyFrame:
                 pl.lit("DOSE").alias("drug_source_value"),
                 pl.col("ROUTE").alias("route_source_value"),
                 pl.col("DOSE_UOM").alias("dose_unit_source_value"),
+                pl.col("NDC").alias("drug_source_concept_id"),
                 #
                 # null
                 pl.lit("").alias("provider_id"),
                 pl.lit("").alias("lot_number"),
                 pl.lit(0).cast(pl.Int64).alias("visit_occurrence_id"),
                 pl.lit("").alias("visit_detail_id"),
-                pl.lit("").alias("drug_source_concept_id"),
             ]
         )
         .drop(old_rx_cols)
@@ -763,10 +768,7 @@ def omop_medications():
     # emars.collect().to_pandas().to_csv("EMAR.csv", index=False)
     rx = omop_rx()
     rx = rx.select(sorted(rx.columns))
-    # rx.collect().to_pandas().to_csv("RX.csv", index=False)
     # need these lengths to infer correct schema
-    # emar_file = pl.scan_csv("EMAR.csv", infer_schema_length=0)
-    # rx_file = pl.scan_csv("RX.csv", infer_schema_length=0)
     omop = pl.concat(
         [
             emars,
@@ -774,9 +776,6 @@ def omop_medications():
         ]
     ).with_row_count(name="drug_exposure_id", offset=1)
     console.log(omop.columns)
-    # remove temp files
-    # Path("EMAR.csv").unlink()
-    # Path("RX.csv").unlink()
     omop.collect().to_pandas().to_csv(DEST_DIR / "Drug_Exposure.csv", index=False)
 
 
@@ -808,7 +807,7 @@ def map_note_type(x: str) -> int | None:
 
 
 def omop_notes():
-    df = pl.scan_ipc(Path().cwd() / "data" / "notes.feather")
+    df = pl.scan_ipc(Path().cwd().parent / "data" / "notes.feather")
 
     def identify_note_type(x: str) -> int:
         if x == "SCM":
@@ -852,76 +851,115 @@ def omop_notes():
             pl.lit(None).alias("note_event_id"),
             pl.lit(None).alias("note_event_field_concept_id"),
         ]
-    ).drop(old_cols)
+    ).drop([c for c in old_cols if c != "note_id"])
     console.log(omop.columns)
     omop.collect().to_pandas().to_csv(DEST_DIR / "Note.csv", index=False)
+    del omop, df
 
 
-# def umls_to_snomed() -> dict[str, str]:
-#     return {
-#         row[2]: row[0]
-#         for row in pl.scan_csv(
-#             Path().cwd() / "data" / "knowledge_bases" / "MRCONSO.RRF",
-#             sep="|",
-#             low_memory=False,
-#             has_header=False,
-#         )
-#         .select(["column_1", "column_12", "column_14"])
-#         .filter(pl.col("column_12") == "SNOMEDCT_US")
-#         .head()
-#         .collect()
-#         .to_numpy()
-#     }
+def cui_to_snomed_converter() -> dict[str, str]:
+    mapper = {}
+    fpath = Path().cwd().parent / "data" / "knowledge_bases" / "MRCONSO.RRF"
+    with open(fpath, "r") as f:
+        for line in f:
+            parts = line.split("|")
+            if parts[11] != "SNOMEDCT_US":
+                continue
+            if parts[6] != "Y":
+                continue
+            if parts[12] != "PT":
+                continue
+            if parts[4] != "PF":
+                continue
+            # at this point we have valid parts
+            mapper[parts[0]] = parts[13]
+    return mapper
+
+
+def snomed_to_omop_conveter() -> dict[str, int]:
+    return {
+        row[6]: row[0]
+        for row in pl.read_csv(
+            Path().cwd().parent / "data" / "knowledge_bases" / "CONCEPT.csv",
+            sep="\t",
+        )
+        .filter(pl.col("standard_concept") == "S")
+        .filter(pl.col("vocabulary_id") == "SNOMED")
+        .to_numpy()
+    }
 
 
 def omop_note_nlp():
-    df = pl.scan_ndjson(
-        Path().cwd().parent / "data" / "scispacy_output" / "output.jsonl", low_memory=False
-    )
-    old_cols = df.columns
-    # will use on next run
-    # scispacy does use umls 2020AA
-    # snomed_lookup = umls_to_snomed()
+    data_dir = Path().cwd().parent / "data" / "scispacy_output" / "batches"
+    files = list(data_dir.iterdir())
 
-    omop = (
-        df.with_columns(
-            [
-                #
-                # required
-                # for now this is an old invalid row_id
-                pl.col("row_num").alias("note_id"),
-                # raw text extracted
-                pl.col("entity").alias("lexical_variant"),
-                # date run
-                pl.lit("2022-10-25")
-                .str.strptime(pl.Date, "%Y-%m-%d")
-                .alias("nlp_date"),
-                #
-                # optional
-                # this represents something regarding section of note panel
-                # we will capture this on next run
-                pl.lit(None).alias("snippet"),
-                # ?we can grab this later too, character offset in note
-                pl.lit(None).alias("offset"),
-                pl.lit("scispacy v2.5.0").alias("nlp_system"),
-                #
-                # null
-                # section of note, should be `subsumes` in this link: https://athena.ohdsi.org/search-terms/terms/45875957
-                # skipped for now
-                pl.lit(None).alias("section_concept_id"),
-                pl.lit(None).alias("note_nlp_concept_id"),
-                pl.lit(None).alias("note_nlp_source_concept_id"),
-                pl.lit(None).alias("nlp_datetime"),
-                pl.lit(None).alias("term_exists"),
-                pl.lit(None).alias("term_temporal"),
-                pl.lit(None).alias("term_modifiers"),
-            ]
-        )
-        .drop(old_cols)
-        .with_row_count(name="note_nlp_id", offset=1)
-    )
-    console.log(omop.columns)
-    omop.collect().to_pandas().to_csv(DEST_DIR / "Note_NLP.csv", index=False)
+    console.log("[yellow]Creating cui to snomed map")
+    cui_to_snomed = cui_to_snomed_converter()
+    console.log("[green]Created cui to snomed map")
+
+    console.log("[yellow]Creating snomed to omop map")
+    snomed_to_omop = snomed_to_omop_conveter()
+    console.log("[green]Created snomed to omop map")
+
+    line_offset = 1
+
+    with open(DEST_DIR / "Note_NLP.csv", "w") as f:
+        for i, file in tqdm(enumerate(files), total=len(files)):
+            df = (
+                pl.read_ipc(file)
+                .with_columns(
+                    [
+                        pl.col("nlp_datetime").str.strptime(
+                            pl.Datetime, "%Y-%m-%dT%H:%M:%S%.6f"
+                        ),
+                        pl.col("cui").map_dict(cui_to_snomed).alias("snomed_id"),
+                    ]
+                )
+                .with_columns(
+                    [
+                        pl.col("nlp_datetime").cast(pl.Date).alias("nlp_date"),
+                        pl.col("snomed_id")
+                        .map_dict(snomed_to_omop)
+                        .alias("note_nlp_concept_id"),
+                    ]
+                )
+            )
+            old_cols = df.columns
+            omop = (
+                df.with_columns(
+                    [
+                        #
+                        # required
+                        # for now this is an old invalid row_id
+                        pl.col("row_num").alias("note_id"),
+                        # raw text extracted
+                        pl.col("entity").alias("lexical_variant"),
+                        # date run
+                        pl.col("nlp_date"),
+                        #
+                        # optional
+                        pl.col("nlp_datetime"),
+                        pl.lit("scispacy v0.5.1").alias("nlp_system"),
+                        pl.col("cui").alias("note_nlp_source_concept_id"),
+                        pl.col("note_nlp_concept_id"),
+                        #
+                        # null
+                        # can't we fill snippet?
+                        pl.lit(None).alias("snippet"),
+                        pl.lit(None).alias("offset"),
+                        pl.lit(None).alias("section_concept_id"),
+                        pl.lit(None).alias("term_exists"),
+                        pl.lit(None).alias("term_temporal"),
+                        pl.lit(None).alias("term_modifiers"),
+                    ]
+                )
+                .drop([c for c in old_cols if c != "nlp_date" and c != "nlp_datetime"])
+                .with_row_count(name="note_nlp_id", offset=line_offset)
+            )
+
+            line_offset += len(omop)
+            omop.to_pandas().to_csv(f, index=False, header=i == 0)
+            console.log(f"[green]Wrote {len(omop)} rows to file")
 
 
 def omop_observation_period():
@@ -976,7 +1014,7 @@ def omop_observation_period():
         )
     ).with_row_count(name="observation_period_id", offset=1)
     console.log(omop.columns)
-    omop.write_csv(DEST_DIR / "Observation_Period.csv")
+    omop.to_pandas().to_csv(DEST_DIR / "Observation_Period.csv", index=False)
 
 
 def omop_cohort_definition():
@@ -1021,7 +1059,7 @@ def omop_cohort_definition():
 
 
 def omop_cohorts():
-    from omop import build_patient_cohort_map as bpcm
+    import build_patient_cohort_map as bpcm
 
     # re-map from above definition
     cohort_definition_map = {

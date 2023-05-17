@@ -11,11 +11,11 @@ console = Console(
     emoji=True,
 )
 
-source_dir = Path().cwd() / "data" / "omop_tables"
+source_dir = Path().cwd().parent / "data" / "omop_tables"
 dest_dir1 = Path().home() / "068IPOP_STIMuLINK-DataAnalytics" / "OMOP"
 dest_dir2 = Path().home() / "068IPOP_STIMuLINK-Team" / "OMOP"
-dest_dir1.mkdir(parents=True, exist_ok=True)
-dest_dir2.mkdir(parents=True, exist_ok=True)
+dest_dir1.mkdir(exist_ok=True)
+dest_dir2.mkdir(exist_ok=True)
 
 # use shutil to move to external drive,
 # use copy to copy to same-drive

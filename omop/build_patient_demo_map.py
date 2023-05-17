@@ -31,6 +31,7 @@ race_cleaner: dict[str, int] = {
     "OTHER ASIAN AMERICAN": 0,
     "SPANISH AMERICAN": 0,
     "CHINESE AMERICAN": 0,
+    "CHINESE": 0,
     "JAPANESE AMERICAN": 0,
     "HAWAIIAN/PACISL": 8557,
     "DECLINE TO ANSWER": 0,
@@ -57,7 +58,7 @@ ethnicity_cleaner = {
 
 
 def validate_demographic_options():
-    from omop.combine_encounters import combined as encounters
+    from combine_encounters import combined as encounters
 
     targets: list[tuple[str, dict[str, int]]] = [
         ("GENDER", gender_cleaner),
@@ -123,7 +124,7 @@ def resolve_demographics(edf: pl.LazyFrame) -> dict[str, tuple[str | None, int |
 def find_all_demographics(
     patient_df: pl.LazyFrame,
 ) -> dict[str, dict[str, tuple[str | None, int | None]]]:
-    from omop.combine_encounters import combined as encounters
+    from combine_encounters import combined as encounters
 
     # unique patient nums
     patient_nums = (
@@ -138,9 +139,9 @@ def find_all_demographics(
 
 
 if __name__ == "__main__":
-    from omop.combine_cohorts import combined as patients
+    from combine_cohorts import combined as patients
 
     validate_demographic_options()
     patient_map = find_all_demographics(patients)
-    with open(Path().cwd() / "data" / "patient_demographics.json", "w") as f:
+    with open(Path().cwd().parent / "data" / "patient_demographics.json", "w") as f:
         json.dump(patient_map, f, indent=4, sort_keys=True)

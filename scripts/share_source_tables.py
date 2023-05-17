@@ -11,7 +11,7 @@ console = Console(
     emoji=True,
 )
 
-source_dir = Path().cwd() / "data" / "source_tables"
+source_dir = Path().cwd().parent / "data" / "source_tables"
 dest_dir = Path().home() / "068IPOP_STIMuLINK-DataAnalytics" / "Source-Tables"
 dest_dir.mkdir(parents=True, exist_ok=True)
 
