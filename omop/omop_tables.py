@@ -890,76 +890,78 @@ def snomed_to_omop_conveter() -> dict[str, int]:
 
 
 def omop_note_nlp():
-    data_dir = Path().cwd().parent / "data" / "scispacy_output" / "batches"
-    files = list(data_dir.iterdir())
+    # data_dir = Path().cwd().parent / "data" / "scispacy_output" / "batches"
+    # files = list(data_dir.iterdir())
 
-    console.log("[yellow]Creating cui to snomed map")
-    cui_to_snomed = cui_to_snomed_converter()
-    console.log("[green]Created cui to snomed map")
+    # console.log("[yellow]Creating cui to snomed map")
+    # cui_to_snomed = cui_to_snomed_converter()
+    # console.log("[green]Created cui to snomed map")
 
     console.log("[yellow]Creating snomed to omop map")
     snomed_to_omop = snomed_to_omop_conveter()
     console.log("[green]Created snomed to omop map")
 
     line_offset = 1
+    file = Path().cwd() / "snomed_output.jsonl"
 
-    with open(DEST_DIR / "Note_NLP.csv", "w") as f:
-        for i, file in tqdm(enumerate(files), total=len(files)):
-            df = (
-                pl.read_ipc(file)
-                .with_columns(
-                    [
-                        pl.col("nlp_datetime").str.strptime(
-                            pl.Datetime, "%Y-%m-%dT%H:%M:%S%.6f"
-                        ),
-                        pl.col("cui").map_dict(cui_to_snomed).alias("snomed_id"),
-                    ]
-                )
-                .with_columns(
-                    [
-                        pl.col("nlp_datetime").cast(pl.Date).alias("nlp_date"),
-                        pl.col("snomed_id")
-                        .map_dict(snomed_to_omop)
-                        .alias("note_nlp_concept_id"),
-                    ]
-                )
-            )
-            old_cols = df.columns
-            omop = (
-                df.with_columns(
-                    [
-                        #
-                        # required
-                        # for now this is an old invalid row_id
-                        pl.col("row_num").alias("note_id"),
-                        # raw text extracted
-                        pl.col("entity").alias("lexical_variant"),
-                        # date run
-                        pl.col("nlp_date"),
-                        #
-                        # optional
-                        pl.col("nlp_datetime"),
-                        pl.lit("scispacy v0.5.1").alias("nlp_system"),
-                        pl.col("cui").alias("note_nlp_source_concept_id"),
-                        pl.col("note_nlp_concept_id"),
-                        #
-                        # null
-                        # can't we fill snippet?
-                        pl.lit(None).alias("snippet"),
-                        pl.lit(None).alias("offset"),
-                        pl.lit(None).alias("section_concept_id"),
-                        pl.lit(None).alias("term_exists"),
-                        pl.lit(None).alias("term_temporal"),
-                        pl.lit(None).alias("term_modifiers"),
-                    ]
-                )
-                .drop([c for c in old_cols if c != "nlp_date" and c != "nlp_datetime"])
-                .with_row_count(name="note_nlp_id", offset=line_offset)
-            )
-
-            line_offset += len(omop)
-            omop.to_pandas().to_csv(f, index=False, header=i == 0)
-            console.log(f"[green]Wrote {len(omop)} rows to file")
+    # with open(DEST_DIR / "Note_NLP.csv", "w") as f:
+    # for i, file in tqdm(enumerate(files), total=len(files)):
+    df = pl.scan_ndjson(file)
+    df = (
+        df
+        # pl.read_ipc(file)
+        # .with_columns(
+        #     [
+        #         pl.col("nlp_datetime").str.strptime(
+        #             pl.Datetime, "%Y-%m-%dT%H:%M:%S%.6f"
+        #         ),
+        #         # pl.col("cui").map_dict(cui_to_snomed).alias("snomed_id"),
+        #     ]
+        # )
+        .with_columns(
+            [
+                # pl.col("nlp_datetime").cast(pl.Date).alias("nlp_date"),
+                pl.col("cui")
+                .map_dict(snomed_to_omop)
+                .alias("note_nlp_concept_id"),
+            ]
+        )
+    )
+    old_cols = df.columns
+    omop = (
+        df.with_columns(
+            [
+                #
+                # required
+                # for now this is an old invalid row_id
+                pl.col("row_num").alias("note_id"),
+                # raw text extracted
+                pl.col("entity").alias("lexical_variant"),
+                # date run
+                pl.lit("5-3-23").alias("nlp_date"),
+                #
+                # optional
+                pl.lit("scispacy v0.5.1 w/ SNOMED linker").alias("nlp_system"),
+                pl.col("cui").alias("note_nlp_source_concept_id"),
+                pl.col("note_nlp_concept_id"),
+                pl.lit(None).alias("nlp_datetime"),
+                #
+                # null
+                # can't we fill snippet?
+                pl.lit(None).alias("snippet"),
+                pl.lit(None).alias("offset"),
+                pl.lit(None).alias("section_concept_id"),
+                pl.lit(None).alias("term_exists"),
+                pl.lit(None).alias("term_temporal"),
+                pl.lit(None).alias("term_modifiers"),
+            ]
+        )
+        .drop([c for c in old_cols if c != "nlp_date" and c != "nlp_datetime"])
+        .with_row_count(name="note_nlp_id", offset=line_offset)
+    )
+    omop = omop.collect()
+    omop.write_csv(file=DEST_DIR / "Note_NLP.csv")
+    console.log(f"[green]Wrote {len(omop)} rows to file")
 
 
 def omop_observation_period():
@@ -1094,19 +1096,19 @@ def omop_cohorts():
 
 if __name__ == "__main__":
     for name, func in [
-        ("persons", omop_persons),
-        ("encounters", omop_encounters),
-        ("locations", omop_locations),
-        ("diagnoses", omop_diagnoses),
-        ("procedures", omop_procedures),
-        ("notes", omop_notes),
+        # ("persons", omop_persons),
+        # ("encounters", omop_encounters),
+        # ("locations", omop_locations),
+        # ("diagnoses", omop_diagnoses),
+        # ("procedures", omop_procedures),
+        # ("notes", omop_notes),
         ("note_nlp", omop_note_nlp),
-        ("labs", omop_labs),
-        ("medications", omop_medications),
-        ("deaths", omop_deaths),
-        ("observation_period", omop_observation_period),
-        ("cohort_definition", omop_cohort_definition),
-        ("cohorts", omop_cohorts),
+        # ("labs", omop_labs),
+        # ("medications", omop_medications),
+        # ("deaths", omop_deaths),
+        # ("observation_period", omop_observation_period),
+        # ("cohort_definition", omop_cohort_definition),
+        # ("cohorts", omop_cohorts),
         # ("observations", omop_observations),
     ]:
         console.log(f"[yellow]Processing {name} table...[/yellow]")
